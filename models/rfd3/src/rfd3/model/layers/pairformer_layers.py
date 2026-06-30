@@ -61,9 +61,7 @@ class AttentionPairBiasPairformerDeepspeed(nn.Module):
         B, L = B_IIH.shape[:2]
 
         if not self.use_deepspeed_evo or L <= 24:
-            Q_IH = Q_IH / torch.sqrt(
-                torch.tensor(self.c).to(Q_IH.device, Q_IH.dtype)
-            )
+            Q_IH = Q_IH / torch.sqrt(torch.tensor(self.c).to(Q_IH.device, Q_IH.dtype))
             # Attention
             A_IIH = torch.softmax(
                 torch.einsum("...ihd,...jhd->...ijh", Q_IH, K_IH) + B_IIH, dim=-2

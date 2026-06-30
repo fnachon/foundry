@@ -220,7 +220,7 @@ def _restore_bonds_for_nonstandard_residues(
                     np.array(bonds_to_add, dtype=np.int64),
                 )
                 atom_array_accum.bonds = atom_array_accum.bonds.merge(new_bonds)
-                logger.info(
+                ranked_logger.info(
                     f"Preserved {len(bonds_to_add)} inter-residue bonds involving non-standard residues from source structure"
                 )
 
@@ -261,7 +261,7 @@ def _restore_bonds_for_nonstandard_residues(
             # This is expected for some atomized residues or ligands at chain termini
             if curr_is_nonstandard and next_is_nonstandard:
                 # Both are non-standard but no C in current - might be an atomized region without proper termini
-                logger.debug(
+                ranked_logger.debug(
                     f"Non-standard residue {curr_residue.res_name[0]} (res_id {curr_residue.res_id[0]}) "
                     f"has no C atom - cannot form backbone bond to next residue"
                 )
@@ -275,7 +275,7 @@ def _restore_bonds_for_nonstandard_residues(
             # This is expected for some atomized residues or ligands at chain termini
             if curr_is_nonstandard and next_is_nonstandard:
                 # Both are non-standard but no N in next - might be an atomized region without proper termini
-                logger.debug(
+                ranked_logger.debug(
                     f"Non-standard residue {next_residue.res_name[0]} (res_id {next_residue.res_id[0]}) "
                     f"has no N atom - cannot form backbone bond from previous residue"
                 )
@@ -301,7 +301,7 @@ def _restore_bonds_for_nonstandard_residues(
             atom_array_accum.array_length(), np.array(bonds_to_add, dtype=np.int64)
         )
         atom_array_accum.bonds = atom_array_accum.bonds.merge(new_bonds)
-        logger.info(
+        ranked_logger.info(
             f"Added {len(bonds_to_add)} backbone bonds involving non-standard residues"
         )
 
@@ -405,21 +405,27 @@ def infer_ori_from_hotspots(atom_array: struc.AtomArray):
 
     # We can only perform distance computations on atoms with non-NaN coordinates
     nan_coords_mask = np.any(np.isnan(atom_array.coord), axis=1)
-    non_nan_atom_array = atom_array[~nan_coords_mask]
+    motif_mask = atom_array.is_motif_atom_with_fixed_coord.astype(bool)
+    non_nan_motif_atom_array = atom_array[~nan_coords_mask & motif_mask]
+    if non_nan_motif_atom_array.array_length() == 0:
+        raise ValueError(
+            "infer_ori_from_hotspots requires at least one fixed motif atom "
+            "(is_motif_atom_with_fixed_coord=True) to compute nearby atoms COM."
+        )
 
     # Perform the distance computation
     # RFD2 used 10 Angstroms instead of 12, but was for residue-level hotspots
     DISTANCE_CUTOFF = 12.0
-    cell_list = struc.CellList(non_nan_atom_array, cell_size=DISTANCE_CUTOFF)
+    cell_list = struc.CellList(non_nan_motif_atom_array, cell_size=DISTANCE_CUTOFF)
     nearby_atoms_mask = get_atom_mask_from_cell_list(
         hotspot_atom_array.coord,
         cell_list,
-        len(non_nan_atom_array),
+        len(non_nan_motif_atom_array),
         cutoff=DISTANCE_CUTOFF,
     )  # (n_query, n_cell_list)
 
     nearby_atoms_mask = np.any(nearby_atoms_mask, axis=0)  # (n_cell_list,)
-    nearby_atoms_com = non_nan_atom_array.coord[nearby_atoms_mask].mean(axis=0)
+    nearby_atoms_com = non_nan_motif_atom_array.coord[nearby_atoms_mask].mean(axis=0)
 
     vector_from_core_to_hotspot = hotspot_com - nearby_atoms_com
     vector_from_core_to_hotspot = vector_from_core_to_hotspot / np.linalg.norm(
@@ -454,7 +460,7 @@ as input and return a three-element list or numpy array of floats.
 def set_com(
     atom_array, ori_token: list | None = None, infer_ori_strategy: str | None = None
 ):
-    if exists(ori_token):
+    if ori_token is not None:
         center = np.array([float(x) for x in ori_token], dtype=atom_array.coord.dtype)
         atom_array.coord = atom_array.coord - center
         ranked_logger.info(f"Received ori_token argument. Setting origin as {center}.")
@@ -561,7 +567,9 @@ def spoof_helical_bundle_ss_conditioning_fn(atom_array: struc.AtomArray):
 #################################################################################
 
 
-def generate_idealized_cb_position(N: np.array, Ca: np.array, C: np.array) -> np.array:
+def generate_idealized_cb_position(
+    N: np.ndarray, Ca: np.ndarray, C: np.ndarray
+) -> np.ndarray:
     """
     Generate Cb coordiantes given (N, CA, C) as if the given coordinates were from an idealized Alanine.
 

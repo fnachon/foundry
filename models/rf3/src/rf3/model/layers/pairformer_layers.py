@@ -202,7 +202,9 @@ class AtomAttentionEncoderPairformer(nn.Module):
             A_I = scatter_mean(
                 torch.zeros(A_I_shape, device=Q_L.device, dtype=Q_L.dtype),
                 -2,
-                f["atom_to_token_map"].long(),  # [L], mapping from atom index to token index
+                f[
+                    "atom_to_token_map"
+                ].long(),  # [L], mapping from atom index to token index
                 processed_Q_L,  # (..., L, C_token)
             )  # (..., I, C_token)
 
@@ -261,9 +263,7 @@ class AttentionPairBiasPairformerDeepspeed(nn.Module):
         B, L = B_IIH.shape[:2]
 
         if not self.use_deepspeed_evo or L <= 24:
-            Q_IH = Q_IH / torch.sqrt(
-                torch.tensor(self.c).to(Q_IH.device, Q_IH.dtype)
-            )
+            Q_IH = Q_IH / torch.sqrt(torch.tensor(self.c).to(Q_IH.device, Q_IH.dtype))
             # Attention
             A_IIH = torch.softmax(
                 torch.einsum("...ihd,...jhd->...ijh", Q_IH, K_IH) + B_IIH, dim=-2

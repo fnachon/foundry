@@ -173,10 +173,12 @@ def scatter_add_pair_features(P_LK_tgt, P_LK_indices, P_LA_src, P_LA_indices):
     elif not torch.all(matches.sum(dim=-1) <= 1):
         raise ValueError("Did not find a scatter index for every atom")
     k_indices = matches.long().argmax(dim=-1)  # (B, L, a)
-    scatter_indices = k_indices.unsqueeze(-1).expand(
-        -1, -1, -1, P_LK_tgt.shape[-1]
-    ).contiguous()  # (B, L, a, c)
-    P_LK_tgt = P_LK_tgt.scatter_add(dim=2, index=scatter_indices, src=P_LA_src.contiguous())
+    scatter_indices = (
+        k_indices.unsqueeze(-1).expand(-1, -1, -1, P_LK_tgt.shape[-1]).contiguous()
+    )  # (B, L, a, c)
+    P_LK_tgt = P_LK_tgt.scatter_add(
+        dim=2, index=scatter_indices, src=P_LA_src.contiguous()
+    )
     return P_LK_tgt
 
 
@@ -400,7 +402,7 @@ def build_index_mask(
 
 def extend_index_mask_with_neighbours(
     mask: torch.Tensor, D_LL: torch.Tensor, k: int
-) -> torch.LongTensor:
+) -> torch.Tensor:
     """
     Parameters
     ----------
@@ -428,10 +430,15 @@ def extend_index_mask_with_neighbours(
     inf = torch.tensor(float("inf"), dtype=D_LL.dtype, device=device)
 
     # 1. Selection of sequence neighbours
-    # Use .repeat() instead of .expand() to produce a contiguous tensor — MPS does
-    # not handle non-contiguous inputs to torch.where correctly.
-    all_idx_row = torch.arange(L, device=device).unsqueeze(0).repeat(L, 1)
-    indices = torch.where(mask.contiguous(), all_idx_row, inf)  # sentinel inf if not-forced
+    # MPS does not handle non-contiguous inputs to torch.where correctly,
+    # so use .repeat() (allocates) there; .expand() (zero-copy view) elsewhere.
+    if device.type == "mps":
+        all_idx_row = torch.arange(L, device=device).unsqueeze(0).repeat(L, 1)
+    else:
+        all_idx_row = torch.arange(L, device=device).unsqueeze(0).expand(L, L)
+    indices = torch.where(
+        mask.contiguous(), all_idx_row, inf
+    )  # sentinel inf if not-forced
     indices = indices.sort(dim=1)[0][:, :k]  # (L, k)
 
     # 2. Find k-nn excluding forced indices
