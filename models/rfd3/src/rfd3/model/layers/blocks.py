@@ -216,7 +216,8 @@ class LinearEmbedWithPool(nn.Module):
             self.c_token,
         )
         Q_L = self.linear(R_L)
-        if self.legacy_pooling and not self.training:
+        # index_reduce is not implemented on MPS; fall through to scatter_mean.
+        if self.legacy_pooling and not self.training and R_L.device.type != "mps":
             return torch.zeros(
                 A_I_shape, device=R_L.device, dtype=Q_L.dtype
             ).index_reduce(-2, tok_idx.long(), Q_L, "mean", include_self=False)
