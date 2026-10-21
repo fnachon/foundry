@@ -210,9 +210,10 @@ class AggregateFeaturesLikeAF3WithoutMSA(Transform):
         # Add partial t during inference
         if "partial_t" in atom_array.get_annotation_categories():
             assert data["is_inference"], "Partial diffusion only inference!"
+            # float32: the annotation is float64, which MPS does not support.
             data["feats"]["partial_t"] = torch.from_numpy(
                 atom_array.get_annotation("partial_t")
-            )
+            ).float()
 
         return data
 
