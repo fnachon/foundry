@@ -40,6 +40,11 @@ All three models — **RFD3**, **RF3**, and **ProteinMPNN/LigandMPNN** — run o
 > - Use `float32` precision — `bfloat16` is not supported on MPS. The MPS accelerator is selected and float32 precision is enforced automatically.
 > - Inference only; multi-GPU training is not supported on MPS.
 > - For `rf3 fold`, pass an absolute path to the input CIF file.
+> - In a conda env where numpy comes from conda, `import torch` can abort with `OMP: Error #15` (two OpenMP runtimes). Point torch at conda's copy (redo after reinstalling torch):
+>   ```bash
+>   T=$(python -c "import importlib.util, os; print(os.path.dirname(importlib.util.find_spec('torch').origin))")/lib
+>   mv "$T/libomp.dylib" "$T/libomp.dylib.bundled" && ln -s "$CONDA_PREFIX/lib/libomp.dylib" "$T/libomp.dylib"
+>   ```
 
 **Downloading weights** Models can be downloaded to a target folder with:
 ```
